@@ -155,17 +155,17 @@ export default function HomePage() {
       const res = await predictLoan(applicant);
       setBackendPrediction(res.data);
 
-      if (res.source === 'fastapi') {
+      if (res.source !== 'client-fallback') {
         setApiBanner({
           type: 'success',
-          title: 'FastAPI KNN Model Prediction Complete',
-          message: `Verdict: ${res.data.status} (${res.data.status === 'Approved' ? 'prediction: 1' : 'prediction: 0'}) • Probability: ${res.data.probability}% • Inferred from trained Scikit-Learn pipeline (backend/model/knn_model.pkl).`,
+          title: 'KNN Underwriting Prediction Complete',
+          message: `Verdict: ${res.data.status} (${res.data.status === 'Approved' ? 'prediction: 1' : 'prediction: 0'}) • Probability: ${res.data.probability}% • Evaluated by machine learning model.`,
         });
       } else {
         setApiBanner({
           type: 'warning',
-          title: 'In-Memory Fallback Active',
-          message: 'FastAPI backend was not reachable at http://localhost:8000. Decision evaluated using browser in-memory KNN fallback.',
+          title: 'Built-in Model Active',
+          message: 'External cloud API was unreachable. Underwriting evaluated using built-in high-availability KNN engine.',
         });
       }
     } catch (err: any) {
@@ -238,7 +238,7 @@ export default function HomePage() {
             />
             <span>
               {backendStatus === 'online'
-                ? 'FastAPI: Online (Port 8000)'
+                ? 'Cloud API: Online'
                 : backendStatus === 'checking'
                 ? 'Connecting to API...'
                 : 'API Offline (Click to Retry)'}

@@ -2,7 +2,10 @@ import axios from 'axios';
 import { LoanApplicant, PredictionOutput } from '../lib/types';
 import { predictLoanApproval } from '../lib/knn';
 
-let activeApiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+export const DEFAULT_API_URL =
+  process.env.NEXT_PUBLIC_API_URL || (typeof window !== 'undefined' ? '' : '');
+
+let activeApiUrl = DEFAULT_API_URL;
 
 export const getApiUrl = () => activeApiUrl;
 
@@ -26,67 +29,63 @@ export interface BackendPredictionResponse {
   recommendations: string[];
 }
 
-/**
- * Standard API call sending applicant features to FastAPI /predict
- */
 export const predict = async (data: Record<string, any>): Promise<any> => {
+  const targetUrl = activeApiUrl ? `${activeApiUrl}/predict` : '/api/predict';
+
   try {
-    const response = await axios.post(`${activeApiUrl}/predict`, data, {
-      timeout: 10000,
+    const response = await axios.post(targetUrl, data, {
+      timeout: 15000,
       headers: { 'Content-Type': 'application/json' },
     });
     return response.data;
-  } catch (err) {
-    const alternateUrl = activeApiUrl.includes('localhost')
-      ? activeApiUrl.replace('localhost', '127.0.0.1')
-      : activeApiUrl.replace('127.0.0.1', 'localhost');
+  } catch (err: any) {
+    if (err.response && err.response.status === 422) {
+      throw err;
+    }
 
-    const fallbackResponse = await axios.post(`${alternateUrl}/predict`, data, {
-      timeout: 10000,
-      headers: { 'Content-Type': 'application/json' },
-    });
-    activeApiUrl = alternateUrl;
-    return fallbackResponse.data;
+    if (targetUrl !== '/api/predict' && typeof window !== 'undefined') {
+      const fallbackRes = await axios.post('/api/predict', data, {
+        timeout: 10000,
+        headers: { 'Content-Type': 'application/json' },
+      });
+      activeApiUrl = '';
+      return fallbackRes.data;
+    }
+
+    throw err;
   }
 };
 
-/**
- * Probes the backend server health.
- */
 export async function checkBackendHealth(): Promise<{ online: boolean; details?: ApiHealthResponse }> {
+  const targetUrl = activeApiUrl ? `${activeApiUrl}/health` : '/api/health';
+
   try {
-    const response = await axios.get<ApiHealthResponse>(`${activeApiUrl}/health`, { timeout: 3000 });
+    const response = await axios.get<ApiHealthResponse>(targetUrl, { timeout: 4000 });
     if (response.status === 200) {
       return { online: true, details: response.data };
     }
   } catch (error) {
-    const alternateUrl = activeApiUrl.includes('localhost')
-      ? activeApiUrl.replace('localhost', '127.0.0.1')
-      : activeApiUrl.replace('127.0.0.1', 'localhost');
-
-    try {
-      const altResponse = await axios.get<ApiHealthResponse>(`${alternateUrl}/health`, { timeout: 3000 });
-      if (altResponse.status === 200) {
-        activeApiUrl = alternateUrl;
-        return { online: true, details: altResponse.data };
+    if (targetUrl !== '/api/health' && typeof window !== 'undefined') {
+      try {
+        const fallbackRes = await axios.get<ApiHealthResponse>('/api/health', { timeout: 3000 });
+        if (fallbackRes.status === 200) {
+          activeApiUrl = '';
+          return { online: true, details: fallbackRes.data };
+        }
+      } catch (e) {
+        // unreachable
       }
-    } catch (err2) {
-      // Both hosts unreachable
     }
   }
   return { online: false };
 }
 
-/**
- * Predicts loan approval by sending applicant data to the FastAPI backend.
- * Gracefully falls back to the client-side KNN engine if backend is offline.
- */
 export async function predictLoan(
   applicant: LoanApplicant,
   options?: { fallbackToLocal?: boolean }
 ): Promise<{
   data: PredictionOutput;
-  source: 'fastapi' | 'client-fallback';
+  source: 'cloud-api' | 'client-fallback';
   error?: string;
 }> {
   try {
@@ -123,7 +122,7 @@ export async function predictLoan(
 
     return {
       data: mappedOutput,
-      source: 'fastapi',
+      source: 'cloud-api',
     };
   } catch (err: any) {
     const fallback = predictLoanApproval(applicant, { k: 5, metric: 'euclidean', weighted: true });

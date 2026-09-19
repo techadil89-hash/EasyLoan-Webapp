@@ -129,7 +129,7 @@ export default function PredictionForm({ onPredictionComplete = (_result) => {} 
           setError(`Server responded with status ${err.response.status}: ${err.response.statusText}`);
         }
       } else if (err.request) {
-        setError('Cannot connect to FastAPI backend at http://localhost:8000. Please ensure the backend server is running.');
+        setError('Unable to connect to the prediction backend service. Please check your internet connection or verify the server status.');
       } else {
         setError(`Request failed: ${err.message}`);
       }
