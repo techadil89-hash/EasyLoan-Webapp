@@ -1,14 +1,17 @@
 import axios from 'axios';
 import { predictLoanApproval } from '../lib/knn';
 
-let activeApiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// Reads the public backend URL provided by Vercel environment variables, or defaults to local development
+export const DEFAULT_API_URL =
+  process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+
+let activeApiUrl = DEFAULT_API_URL;
 
 export const getApiUrl = () => activeApiUrl;
 
 /**
  * Standard API call sending applicant features to FastAPI /predict.
  * Directly fulfills Section 6 of requirements.
- * Automatically handles localhost / 127.0.0.1 resolution.
  *
  * @param {Object} data - Applicant features dictionary.
  * @returns {Promise<Object>} Backend prediction payload.
@@ -16,49 +19,59 @@ export const getApiUrl = () => activeApiUrl;
 export const predict = async (data) => {
   try {
     const response = await axios.post(`${activeApiUrl}/predict`, data, {
-      timeout: 10000,
+      timeout: 15000,
       headers: { 'Content-Type': 'application/json' },
     });
     return response.data;
   } catch (err) {
-    // Retry with alternate loopback host in case of IPv6 localhost resolution mismatch
-    const alternateUrl = activeApiUrl.includes('localhost')
-      ? activeApiUrl.replace('localhost', '127.0.0.1')
-      : activeApiUrl.replace('127.0.0.1', 'localhost');
+    // Only attempt alternate loopback in local dev environment
+    if (activeApiUrl.includes('localhost') || activeApiUrl.includes('127.0.0.1')) {
+      const alternateUrl = activeApiUrl.includes('localhost')
+        ? activeApiUrl.replace('localhost', '127.0.0.1')
+        : activeApiUrl.replace('127.0.0.1', 'localhost');
 
-    const fallbackResponse = await axios.post(`${alternateUrl}/predict`, data, {
-      timeout: 10000,
-      headers: { 'Content-Type': 'application/json' },
-    });
-    activeApiUrl = alternateUrl;
-    return fallbackResponse.data;
+      try {
+        const fallbackResponse = await axios.post(`${alternateUrl}/predict`, data, {
+          timeout: 10000,
+          headers: { 'Content-Type': 'application/json' },
+        });
+        activeApiUrl = alternateUrl;
+        return fallbackResponse.data;
+      } catch (innerErr) {
+        throw err;
+      }
+    }
+    throw err;
   }
 };
 
 /**
  * Probes the FastAPI /health endpoint to check server availability.
- * Resilient against Windows IPv4/IPv6 localhost binding differences.
+ * Works seamlessly across both local development and live Vercel deployments.
  * @returns {Promise<{ online: boolean, details?: any }>}
  */
 export const checkBackendHealth = async () => {
   try {
-    const response = await axios.get(`${activeApiUrl}/health`, { timeout: 3000 });
+    const response = await axios.get(`${activeApiUrl}/health`, { timeout: 4000 });
     if (response.status === 200) {
       return { online: true, details: response.data };
     }
   } catch (error) {
-    const alternateUrl = activeApiUrl.includes('localhost')
-      ? activeApiUrl.replace('localhost', '127.0.0.1')
-      : activeApiUrl.replace('127.0.0.1', 'localhost');
+    // Retry loopback switch if running in local development
+    if (activeApiUrl.includes('localhost') || activeApiUrl.includes('127.0.0.1')) {
+      const alternateUrl = activeApiUrl.includes('localhost')
+        ? activeApiUrl.replace('localhost', '127.0.0.1')
+        : activeApiUrl.replace('127.0.0.1', 'localhost');
 
-    try {
-      const altResponse = await axios.get(`${alternateUrl}/health`, { timeout: 3000 });
-      if (altResponse.status === 200) {
-        activeApiUrl = alternateUrl;
-        return { online: true, details: altResponse.data };
+      try {
+        const altResponse = await axios.get(`${alternateUrl}/health`, { timeout: 3000 });
+        if (altResponse.status === 200) {
+          activeApiUrl = alternateUrl;
+          return { online: true, details: altResponse.data };
+        }
+      } catch (err2) {
+        // Both local hosts unreachable
       }
-    } catch (err2) {
-      // Both hosts unreachable
     }
   }
   return { online: false };
