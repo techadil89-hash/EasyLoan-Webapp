@@ -1,0 +1,33 @@
+{
+  "totalTrainingSamples": 614,
+  "totalTestSamples": 367,
+  "stats": {
+    "ApplicantIncome": {
+      "min": 150,
+      "max": 81000,
+      "avg": 5403
+    },
+    "CoapplicantIncome": {
+      "min": 0,
+      "max": 41667,
+      "avg": 1621
+    },
+    "LoanAmount": {
+      "min": 9,
+      "max": 700,
+      "avg": 145
+    },
+    "Loan_Amount_Term": {
+      "min": 12,
+      "max": 480,
+      "avg": 342
+    },
+    "TotalIncome": {
+      "min": 1442,
+      "max": 81000,
+      "avg": 7025
+    }
+  },
+  "approvedCount": 422,
+  "rejectedCount": 192
+}
