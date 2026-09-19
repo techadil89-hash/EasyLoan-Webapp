@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { predictLoanApproval } from '../lib/knn';
 
-// Reads the public backend URL provided by Vercel environment variables, or defaults to local development
+// Determine initial API base URL
 export const DEFAULT_API_URL =
   process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -10,21 +10,28 @@ let activeApiUrl = DEFAULT_API_URL;
 export const getApiUrl = () => activeApiUrl;
 
 /**
- * Standard API call sending applicant features to FastAPI /predict.
- * Directly fulfills Section 6 of requirements.
+ * Standard API call sending applicant features to /predict.
+ * Tries the primary API URL (FastAPI/Render) and automatically falls back
+ * to the built-in Vercel /api/predict serverless route if unavailable.
  *
  * @param {Object} data - Applicant features dictionary.
  * @returns {Promise<Object>} Backend prediction payload.
  */
 export const predict = async (data) => {
+  // 1. Try currently active API URL
   try {
     const response = await axios.post(`${activeApiUrl}/predict`, data, {
-      timeout: 15000,
+      timeout: 12000,
       headers: { 'Content-Type': 'application/json' },
     });
     return response.data;
   } catch (err) {
-    // Only attempt alternate loopback in local dev environment
+    // If validation error (HTTP 422), do not fallback to other routes
+    if (err.response && err.response.status === 422) {
+      throw err;
+    }
+
+    // 2. If running locally, try alternate IPv4/IPv6 localhost
     if (activeApiUrl.includes('localhost') || activeApiUrl.includes('127.0.0.1')) {
       const alternateUrl = activeApiUrl.includes('localhost')
         ? activeApiUrl.replace('localhost', '127.0.0.1')
@@ -32,45 +39,74 @@ export const predict = async (data) => {
 
       try {
         const fallbackResponse = await axios.post(`${alternateUrl}/predict`, data, {
-          timeout: 10000,
+          timeout: 8000,
           headers: { 'Content-Type': 'application/json' },
         });
         activeApiUrl = alternateUrl;
         return fallbackResponse.data;
       } catch (innerErr) {
-        throw err;
+        // continue to Next.js API fallback
       }
     }
+
+    // 3. Fallback to built-in Next.js /api/predict (works 100% on Vercel without external server)
+    if (typeof window !== 'undefined' && activeApiUrl !== '/api') {
+      try {
+        const vercelApiResponse = await axios.post('/api/predict', data, {
+          timeout: 10000,
+          headers: { 'Content-Type': 'application/json' },
+        });
+        activeApiUrl = '/api';
+        return vercelApiResponse.data;
+      } catch (vercelErr) {
+        throw vercelErr;
+      }
+    }
+
     throw err;
   }
 };
 
 /**
- * Probes the FastAPI /health endpoint to check server availability.
- * Works seamlessly across both local development and live Vercel deployments.
+ * Probes server health (/health).
+ * Tries external FastAPI and seamlessly falls back to /api/health on Vercel.
  * @returns {Promise<{ online: boolean, details?: any }>}
  */
 export const checkBackendHealth = async () => {
+  // 1. Try active URL
   try {
-    const response = await axios.get(`${activeApiUrl}/health`, { timeout: 4000 });
+    const response = await axios.get(`${activeApiUrl}/health`, { timeout: 3500 });
     if (response.status === 200) {
       return { online: true, details: response.data };
     }
   } catch (error) {
-    // Retry loopback switch if running in local development
+    // 2. Try loopback alternate if local
     if (activeApiUrl.includes('localhost') || activeApiUrl.includes('127.0.0.1')) {
       const alternateUrl = activeApiUrl.includes('localhost')
         ? activeApiUrl.replace('localhost', '127.0.0.1')
         : activeApiUrl.replace('127.0.0.1', 'localhost');
 
       try {
-        const altResponse = await axios.get(`${alternateUrl}/health`, { timeout: 3000 });
+        const altResponse = await axios.get(`${alternateUrl}/health`, { timeout: 2500 });
         if (altResponse.status === 200) {
           activeApiUrl = alternateUrl;
           return { online: true, details: altResponse.data };
         }
       } catch (err2) {
-        // Both local hosts unreachable
+        // continue to /api
+      }
+    }
+
+    // 3. Try /api/health (Vercel Built-In Route)
+    if (typeof window !== 'undefined' && activeApiUrl !== '/api') {
+      try {
+        const nextApiResponse = await axios.get('/api/health', { timeout: 3000 });
+        if (nextApiResponse.status === 200) {
+          activeApiUrl = '/api';
+          return { online: true, details: nextApiResponse.data };
+        }
+      } catch (e) {
+        // unreachable
       }
     }
   }
@@ -79,7 +115,7 @@ export const checkBackendHealth = async () => {
 
 /**
  * High-level loan prediction utility for the UI with automatic fallback.
- * Formats applicant object, calls FastAPI, and falls back to local KNN if offline.
+ * Formats applicant object, calls prediction API, and falls back to local KNN if needed.
  *
  * @param {Object} applicant
  * @returns {Promise<{ data: any, source: 'fastapi' | 'client-fallback', error?: string }>}
