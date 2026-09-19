@@ -213,11 +213,12 @@ export function predictLoanApproval(
   }
 
   // 3. Coapplicant Support
-  if (applicant.CoapplicantIncome > 0) {
+  const coappIncome = Number(applicant.CoapplicantIncome) || 0;
+  if (coappIncome > 0) {
     factors.push({
       name: 'Co-applicant Income Buffer',
       impact: 'positive',
-      description: `Co-applicant adds $${applicant.CoapplicantIncome.toLocaleString()}/mo, strengthening debt repayment capacity.`,
+      description: `Co-applicant adds $${coappIncome.toLocaleString()}/mo, strengthening debt repayment capacity.`,
     });
   } else {
     factors.push({

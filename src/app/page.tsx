@@ -417,7 +417,7 @@ export default function HomePage() {
       ) : (
         /* VIEW 2: Dedicated PredictionForm.jsx Spec (Direct Axios FastAPI Form) */
         <section aria-label="Dedicated FastAPI Prediction Form">
-          <PredictionForm />
+          <PredictionForm onPredictionComplete={(res: any) => setBackendPrediction(res)} />
         </section>
       )}
 

@@ -19,7 +19,10 @@ import {
   ArrowRight,
 } from 'lucide-react';
 
-export default function PredictionForm({ onPredictionComplete }) {
+/**
+ * @param {{ onPredictionComplete?: (result: any) => void }} [props]
+ */
+export default function PredictionForm({ onPredictionComplete = (_result) => {} } = {}) {
   // Form input state
   const [formData, setFormData] = useState({
     firstName: '',
